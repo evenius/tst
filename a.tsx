@@ -1,6 +1,6 @@
 import axios from 'axios';
 import QueryString from 'qs';
-import { FC, ReactNode, createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { FC, ReactNode, createContext, useCallback, useRef, useEffect, useState } from 'react';
 
 import { IEntitlement } from '@/models/IEntitlement.interface';
 import { Page as PageType } from '@/payload-types';
@@ -20,6 +20,7 @@ const NavigationContext = createContext<NavigationContextProps>({
 });
 
 export const NavigationProvider: FC<{ children: ReactNode }> = ({ children }) => {
+  const currentRequest = useRef<AbortController | null>(null);
   const [footerNav, setFooterNav] = useState<Page[]>([]);
   const [mainNav, setMainNav] = useState<Page[]>([]);
 
@@ -37,7 +38,18 @@ export const NavigationProvider: FC<{ children: ReactNode }> = ({ children }) =>
 
   const fetchPayloadNav = useCallback(async () => {
     try {
-      const { data: entitlement } = await axios.get<IEntitlement>(`/api/offers/entitlement/${auth.token}`);
+
+        if (currentRequest.current) {
+            currentRequest.current.abort();
+            currentRequest.current = null;
+        }
+
+      currentRequest.current = new AbortController();
+
+      const { data: entitlement } = await axios.get<IEntitlement>(`/api/offers/entitlement/${auth.token}`, {
+        signal: currentRequest.current.signal,
+      });
+
       const entitlementIds = entitlement.data.viewer.entitlements.edges.map((offer) => offer.node.offer.id);
 
       const query = {
@@ -76,7 +88,9 @@ export const NavigationProvider: FC<{ children: ReactNode }> = ({ children }) =>
   }, [auth?.token]);
 
   useEffect(() => {
-    fetchPayloadNav();
+    if(auth?.token) {
+        fetchPayloadNav();
+    }
   }, [fetchPayloadNav]);
 
   return <NavigationContext.Provider value={{ footerNav, mainNav }}>{children}</NavigationContext.Provider>;
